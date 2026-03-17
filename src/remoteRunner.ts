@@ -17,9 +17,6 @@ export class RemoteRunner {
             throw new Error('Not connected to SSH server');
         }
 
-        // Stop any existing process
-        await this.stop();
-
         const command = customCommand || await this.detectRunCommand(remoteProjectDir);
         if (!command) {
             throw new Error('Could not detect run command. Please set sshServer.runCommand in settings.');
@@ -32,36 +29,89 @@ export class RemoteRunner {
         const pty: vscode.Pseudoterminal = {
             onDidWrite: this.writeEmitter.event,
             onDidClose: closeEmitter.event,
-            open: () => {
-                this.writeEmitter.fire(`\x1b[1;36m⚡ Running on remote server:\x1b[0m ${command}\r\n`);
-                this.writeEmitter.fire(`\x1b[1;36m📁 Directory:\x1b[0m ${remoteProjectDir}\r\n`);
-                this.writeEmitter.fire('\x1b[90m' + '─'.repeat(60) + '\x1b[0m\r\n');
-            },
+            open: () => {},
             close: () => {
-                this.stop();
+                // Closing terminal just disconnects the tail stream, does NOT stop the script
+                if (this.currentChannel) {
+                    try {
+                        this.currentChannel.close();
+                    } catch (e) {}
+                    this.currentChannel = null;
+                }
             },
             handleInput: (data: string) => {
-                // Forward input to remote process
-                if (this.currentChannel) {
-                    this.currentChannel.write(data);
-                }
+                // We cannot send input to a nohup process easily.
+                // We could forward it to the tail stream, but it wouldn't reach the process.
+                // For now, input is disabled in background mode.
             },
         };
 
         this.terminal = vscode.window.createTerminal({
-            name: '🖥️ SSH Server',
+            name: '🖥️ SSH Server (Background)',
             pty,
         });
         this.terminal.show();
 
-        // Execute command on remote server
-        const fullCommand = `cd "${remoteProjectDir}" && ${command}`;
+        const outputDir = `${remoteProjectDir}/sshserver_output`;
+        const logFile = `${outputDir}/live_run.log`;
+        const pidFile = `${outputDir}/live_run.pid`;
 
         try {
+            // Unify environment and directory
+            this.writeEmitter.fire(`\x1b[1;36m⚡ Directory:\x1b[0m ${remoteProjectDir}\r\n`);
+            this.writeEmitter.fire('\x1b[90m' + '─'.repeat(60) + '\x1b[0m\r\n');
+
+            // 1. Check if process is already running
+            const checkCmd = `
+                mkdir -p "${outputDir}"
+                if [ -f "${pidFile}" ]; then
+                    PID=$(cat "${pidFile}")
+                    if ps -p $PID > /dev/null; then
+                        echo "RUNNING:$PID"
+                    else
+                        echo "STALE"
+                    fi
+                else
+                    echo "NONE"
+                fi
+            `;
+            const checkResult = await this.sshManager.exec(checkCmd);
+            const status = checkResult.stdout.trim();
+
+            let pid = '';
+
+            if (status.startsWith('RUNNING:')) {
+                pid = status.split(':')[1];
+                this.writeEmitter.fire(`\x1b[1;33m⚠️ Script is already running in background (PID: ${pid}).\x1b[0m\r\n`);
+                this.writeEmitter.fire(`\x1b[1;33m⚠️ Re-attaching to live log stream...\x1b[0m\r\n`);
+            } else {
+                this.writeEmitter.fire(`\x1b[1;36m▶ Starting new background process:\x1b[0m ${command}\r\n`);
+                // 2. Start process in background
+                const startCmd = `
+                    cd "${remoteProjectDir}"
+                    nohup ${command} > "${logFile}" 2>&1 &
+                    PID=$!
+                    echo $PID > "${pidFile}"
+                    echo $PID
+                `;
+                const startResult = await this.sshManager.exec(startCmd);
+                pid = startResult.stdout.trim().split('\n').pop()?.trim() || '';
+                
+                if (!pid || !/^\d+$/.test(pid)) {
+                    throw new Error(`Failed to start process or retrieve PID. Output: ${startResult.stdout}`);
+                }
+                this.writeEmitter.fire(`\x1b[1;32m✅ Started with PID: ${pid}\x1b[0m\r\n`);
+            }
+
+            this.writeEmitter.fire('\x1b[90m' + '─'.repeat(60) + '\x1b[0m\r\n');
+
+            // 3. Stream the log file
+            // tail --pid exits when the process dies
+            const tailCmd = `tail -f "${logFile}" --pid=${pid}`;
+            
             this.currentChannel = await this.sshManager.execStream(
-                fullCommand,
+                tailCmd,
                 (data: string) => {
-                    // Convert \n to \r\n for terminal
                     this.writeEmitter.fire(data.replace(/\n/g, '\r\n'));
                 },
                 (data: string) => {
@@ -69,11 +119,7 @@ export class RemoteRunner {
                 },
                 (code: number) => {
                     this.writeEmitter.fire('\r\n\x1b[90m' + '─'.repeat(60) + '\x1b[0m\r\n');
-                    if (code === 0) {
-                        this.writeEmitter.fire(`\x1b[1;32m✅ Process exited with code ${code}\x1b[0m\r\n`);
-                    } else {
-                        this.writeEmitter.fire(`\x1b[1;31m❌ Process exited with code ${code}\x1b[0m\r\n`);
-                    }
+                    this.writeEmitter.fire(`\x1b[1;36mℹ️ Stream disconnected or process ended.\x1b[0m\r\n`);
                     this.currentChannel = null;
                 }
             );
@@ -82,26 +128,66 @@ export class RemoteRunner {
         }
     }
 
-    public async stop(): Promise<void> {
+    public async stop(remoteProjectDir?: string): Promise<void> {
+        // Disconnect the tail stream if it's running
         if (this.currentChannel) {
-            this.currentChannel.signal('TERM');
-            // Give it a moment, then force kill
-            setTimeout(() => {
-                if (this.currentChannel) {
-                    try {
-                        this.currentChannel.signal('KILL');
-                    } catch (e) {
-                        // ignore
-                    }
-                    this.currentChannel.close();
-                    this.currentChannel = null;
+            try {
+                this.currentChannel.close();
+            } catch (e) {}
+            this.currentChannel = null;
+            if (this.terminal) {
+                this.writeEmitter.fire(`\x1b[1;33m🔌 Detached from stream.\x1b[0m\r\n`);
+            }
+        }
+
+        // Kill the actual background process on the server
+        if (remoteProjectDir && this.sshManager.isConnected()) {
+            try {
+                const pidFile = `${remoteProjectDir}/sshserver_output/live_run.pid`;
+                const killCmd = `
+                    if [ -f "${pidFile}" ]; then
+                        PID=$(cat "${pidFile}")
+                        if ps -p $PID > /dev/null; then
+                            kill -TERM $PID 2>/dev/null
+                            sleep 1
+                            kill -9 $PID 2>/dev/null
+                            rm -f "${pidFile}"
+                            echo "KILLED"
+                        fi
+                    fi
+                `;
+                await this.sshManager.exec(killCmd);
+                if (this.terminal) {
+                    this.writeEmitter.fire(`\x1b[1;31m🛑 Background process stopped.\x1b[0m\r\n`);
                 }
-            }, 2000);
+            } catch (err) {
+                console.error('Failed to kill background process', err);
+            }
         }
     }
 
-    public isRunning(): boolean {
-        return this.currentChannel !== null;
+    // Changing signature of isRunning since we can have detached processes
+    public async checkIsRunning(remoteProjectDir: string): Promise<boolean> {
+        if (!this.sshManager.isConnected()) return false;
+        try {
+            const pidFile = `${remoteProjectDir}/sshserver_output/live_run.pid`;
+            const checkCmd = `
+                if [ -f "${pidFile}" ]; then
+                    PID=$(cat "${pidFile}")
+                    if ps -p $PID > /dev/null; then
+                        echo "YES"
+                    else
+                        echo "NO"
+                    fi
+                else
+                    echo "NO"
+                fi
+            `;
+            const result = await this.sshManager.exec(checkCmd);
+            return result.stdout.trim() === 'YES';
+        } catch {
+            return false;
+        }
     }
 
     private async detectRunCommand(remoteProjectDir: string): Promise<string | null> {

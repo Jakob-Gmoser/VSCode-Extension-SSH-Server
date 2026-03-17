@@ -582,6 +582,21 @@
                     }
                     break;
 
+                case 'runStatus':
+                    const runBtn = document.getElementById('runBtn');
+                    const stopBtn = document.getElementById('stopBtn');
+                    if (msg.running) {
+                        runBtn.disabled = true;
+                        runBtn.style.display = 'none';
+                        stopBtn.disabled = false;
+                        stopBtn.style.display = 'flex';
+                    } else {
+                        runBtn.disabled = !document.getElementById('deployBtn').disabled; // Only enable if connected
+                        runBtn.style.display = 'flex';
+                        stopBtn.disabled = true;
+                        stopBtn.style.display = 'none';
+                    }
+                    break;
                 case 'outputFiles':
                     updateFileList(msg.files);
                     break;

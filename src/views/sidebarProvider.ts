@@ -99,6 +99,28 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     break;
             }
         });
+
+        // Start checking for running processes
+        this.startPeriodicUpdates();
+    }
+
+    private updateInterval: NodeJS.Timeout | null = null;
+
+    private startPeriodicUpdates(): void {
+        this.updateInterval = setInterval(async () => {
+            if (this.sshManager.isConnected() && this.remoteProjectDir) {
+                const isRunning = await this.runner.checkIsRunning(this.remoteProjectDir);
+                this.postMessage({
+                    type: 'runStatus',
+                    running: isRunning
+                });
+            } else {
+                this.postMessage({
+                    type: 'runStatus',
+                    running: false
+                });
+            }
+        }, 2000);
     }
 
     private sendInitialState(): void {
@@ -185,32 +207,26 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     private async handleRun(customCommand?: string): Promise<void> {
         if (!this.remoteProjectDir) {
-            // Try to construct it
-            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-            if (workspaceFolder) {
-                const config = vscode.workspace.getConfiguration('sshServer');
-                const remoteBaseDir = config.get<string>('remoteBaseDir') || '~/Projekte';
-                const projectName = path.basename(workspaceFolder.uri.fsPath);
-                this.remoteProjectDir = `${remoteBaseDir}/${projectName}`;
-            } else {
-                vscode.window.showErrorMessage('No workspace folder open. Deploy first!');
-                return;
-            }
+            vscode.window.showErrorMessage('Please deploy first before running.');
+            return;
         }
 
         try {
-            this.postMessage({ type: 'runStatus', status: 'running' });
-            await this.runner.run(this.remoteProjectDir, customCommand || undefined);
+            this.postMessage({ type: 'log', message: 'Starting run...' });
+            await this.runner.run(this.remoteProjectDir, customCommand);
         } catch (err: any) {
-            this.postMessage({ type: 'runStatus', status: 'stopped' });
             vscode.window.showErrorMessage(`Run failed: ${err.message}`);
+            this.postMessage({ type: 'log', message: `Run failed: ${err.message}` });
         }
     }
 
     private async handleStop(): Promise<void> {
-        await this.runner.stop();
-        this.postMessage({ type: 'runStatus', status: 'stopped' });
-        this.postMessage({ type: 'log', message: 'Process stopped' });
+        try {
+            await this.runner.stop(this.remoteProjectDir);
+            this.postMessage({ type: 'log', message: 'Process stopped' });
+        } catch (err: any) {
+            vscode.window.showErrorMessage(`Stop failed: ${err.message}`);
+        }
     }
 
     private async handlePullOutput(): Promise<void> {
