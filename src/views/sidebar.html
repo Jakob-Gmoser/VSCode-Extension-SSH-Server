@@ -381,34 +381,32 @@
             <span class="collapse-icon">▼</span>
         </div>
         <div class="section-content">
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Host / IP</label>
-                    <input type="text" id="hostInput" placeholder="192.168.1.100">
-                </div>
-                <div class="form-group small">
-                    <label>Port</label>
-                    <input type="number" id="portInput" value="22">
-                </div>
+            <div class="form-group">
+                <label>Host / IP</label>
+                <input type="text" id="hostInput" placeholder="e.g. 192.168.1.100">
+            </div>
+            <div class="form-group">
+                <label>Port</label>
+                <input type="number" id="portInput" value="22">
             </div>
             <div class="form-group">
                 <label>Username</label>
-                <input type="text" id="usernameInput" placeholder="user">
+                <input type="text" id="usernameInput" placeholder="root">
             </div>
             <div class="form-group">
-                <label>Passwort (leer = Key / Prompt)</label>
-                <input type="password" id="passwordInput" placeholder="optional">
+                <label>Password (optional)</label>
+                <input type="password" id="passwordInput" placeholder="Leave empty for SSH Key">
             </div>
             <div class="form-group">
-                <label>Private Key Pfad</label>
-                <input type="text" id="keyPathInput" placeholder="~/.ssh/id_rsa">
+                <label>Private Key Path (optional)</label>
+                <input type="text" id="keyPathInput" placeholder="e.g. ~/.ssh/id_rsa">
             </div>
             <div class="btn-row">
                 <button class="btn-success" id="connectBtn" onclick="handleConnect()">
-                    ⚡ Verbinden
+                    ⚡ Connect
                 </button>
                 <button class="btn-danger" id="disconnectBtn" onclick="handleDisconnect()" disabled>
-                    ✕ Trennen
+                    ✕ Disconnect
                 </button>
             </div>
         </div>
@@ -422,19 +420,19 @@
             <span class="collapse-icon">▼</span>
         </div>
         <div class="section-content">
-            <div class="form-group">
-                <label>Run Command (leer = Auto-Detect)</label>
-                <input type="text" id="runCommandInput" placeholder="z.B. python3 main.py">
-            </div>
             <button class="btn-primary" id="deployBtn" onclick="handleDeploy()" disabled>
-                <span id="deployIcon">📦</span> Code deployen
+                <span id="deployIcon">📦</span> Deploy Workspace
             </button>
-            <div class="btn-row" style="margin-top: 6px;">
+            <div class="form-group" style="margin-top: 15px;">
+                <label>Custom Run Command (optional)</label>
+                <input type="text" id="runCommandInput" placeholder="e.g. python3 main.py">
+            </div>
+            <div class="btn-row">
                 <button class="btn-success" id="runBtn" onclick="handleRun()" disabled>
-                    ▶ Ausführen
+                    ▶ Run
                 </button>
-                <button class="btn-danger" id="stopBtn" onclick="handleStop()" disabled>
-                    ■ Stoppen
+                <button class="btn-danger" id="stopBtn" onclick="handleStop()" disabled style="display: none;">
+                    ■ Stop Process
                 </button>
             </div>
         </div>
@@ -449,7 +447,7 @@
         </div>
         <div class="section-content">
             <div id="statusContent">
-                <div class="empty-state">Nicht verbunden</div>
+                <div class="empty-state">Not connected</div>
             </div>
         </div>
     </div>
@@ -458,20 +456,20 @@
     <div class="section" id="outputSection">
         <div class="section-header" onclick="toggleSection('outputSection')">
             <span class="icon">📁</span>
-            <span>Output Dateien</span>
+            <span>Output Files</span>
             <span class="collapse-icon">▼</span>
         </div>
         <div class="section-content">
             <div class="btn-row" style="margin-bottom: 8px;">
                 <button class="btn-primary" id="pullAllBtn" onclick="handlePullOutput()" disabled>
-                    ⬇ Alle herunterladen
+                    ⬇ Download All
                 </button>
                 <button class="btn-secondary" onclick="handleRefreshFiles()" style="flex: 0 0 auto; width: auto; padding: 6px 10px;">
                     🔄
                 </button>
             </div>
             <div id="fileList">
-                <div class="empty-state">Keine Dateien</div>
+                <div class="empty-state">No files found</div>
             </div>
         </div>
     </div>
@@ -485,7 +483,7 @@
         </div>
         <div class="section-content">
             <div class="log-area" id="logArea">
-                <div class="log-entry">Bereit.</div>
+                <div class="log-entry">Ready.</div>
             </div>
         </div>
     </div>
@@ -514,16 +512,25 @@
 
         let isConnected = false;
 
-        // Restore previous state if available
-        const previousState = vscode.getState() || { logs: [], logsHtml: '' };
+        // Load previous state completely locally so UI doesn't visually reset while waiting for extension
+        const previousState = vscode.getState() || {};
         if (previousState.logsHtml) {
             logArea.innerHTML = previousState.logsHtml;
         }
+        if (previousState.running) {
+            runBtn.disabled = true;
+            runBtn.style.display = 'none';
+            stopBtn.disabled = false;
+            stopBtn.style.display = 'flex';
+        }
 
         // Save state function
-        function saveState() {
+        function saveState(partialState = {}) {
+            const currentState = vscode.getState() || {};
             vscode.setState({
-                logsHtml: logArea.innerHTML
+                ...currentState,
+                logsHtml: logArea.innerHTML,
+                ...partialState
             });
         }
 
@@ -541,10 +548,14 @@
                     keyPathInput.value = msg.data.privateKeyPath || '';
                     runCommandInput.value = msg.data.runCommand || '';
                     
-                    // Restore logs
-                    if (msg.data.logs && msg.data.logs.length > 0) {
-                        logArea.innerHTML = ''; // Clear default "Bereit."
-                        msg.data.logs.forEach(log => appendLog(log));
+                    // We rely purely on locally cached HTML logs because reconstructing plain-text logs lost HTML formatting.
+                    // Only default to backend logs if we have absolutely nothing locally.
+                    if ((!previousState.logsHtml || previousState.logsHtml.includes('Ready.')) && msg.data.logs && msg.data.logs.length > 0) {
+                        logArea.innerHTML = ''; 
+                        msg.data.logs.forEach(log => {
+                            const entry = `<div class="log-entry"><span class="log-msg">${log}</span></div>`;
+                            appendLog(entry);
+                        });
                     }
 
                     if (msg.data.connected) {
@@ -572,19 +583,10 @@
                     }
                     break;
 
-                case 'runStatus':
-                    if (msg.status === 'running') {
-                        runBtn.disabled = true;
-                        stopBtn.disabled = false;
-                    } else {
-                        runBtn.disabled = !isConnected;
-                        stopBtn.disabled = true;
-                    }
-                    break;
+
 
                 case 'runStatus':
-                    const runBtn = document.getElementById('runBtn');
-                    const stopBtn = document.getElementById('stopBtn');
+                    saveState({ running: msg.running });
                     if (msg.running) {
                         runBtn.disabled = true;
                         runBtn.style.display = 'none';
@@ -621,9 +623,9 @@
             } else {
                 connBadge.className = 'status-badge disconnected';
                 connBadge.innerHTML = '<span class="status-dot red"></span> Offline';
-                statusContent.innerHTML = '<div class="empty-state">Nicht verbunden</div>';
+                statusContent.innerHTML = '<div class="empty-state">Not connected</div>';
                 stopBtn.disabled = true;
-                fileList.innerHTML = '<div class="empty-state">Keine Dateien</div>';
+                fileList.innerHTML = '<div class="empty-state">No files found</div>';
             }
         }
 
@@ -668,7 +670,7 @@
 
         function updateFileList(files) {
             if (!files || files.length === 0) {
-                fileList.innerHTML = '<div class="empty-state">Keine Output-Dateien</div>';
+                fileList.innerHTML = '<div class="empty-state">No files found</div>';
                 return;
             }
 
@@ -679,7 +681,7 @@
                         <span class="file-icon">📄</span>
                         <span class="file-name" title="${file.name}">${file.name}</span>
                         <span class="file-size">${file.sizeFormatted}</span>
-                        <button class="file-download" onclick="downloadFile('${file.path}')" title="Herunterladen">⬇</button>
+                        <button class="file-download" onclick="downloadFile('${file.path}')" title="Download">⬇</button>
                     </li>
                 `;
             }

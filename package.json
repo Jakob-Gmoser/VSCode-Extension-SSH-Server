@@ -2,8 +2,8 @@
   "name": "ssh-server-deploy",
   "displayName": "SSH Server Deploy",
   "description": "Deploy, run, and manage projects on a remote server via SSH",
-  "version": "0.3.0",
-  "publisher": "your-username",
+  "version": "0.3.5",
+  "publisher": "Jakob",
   "repository": {
     "type": "git",
     "url": "https://github.com/Jakob-Gmoser/VSCode-Extension-SSH-Server"

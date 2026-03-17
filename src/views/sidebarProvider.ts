@@ -125,6 +125,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     private sendInitialState(): void {
         const config = vscode.workspace.getConfiguration('sshServer');
+
+        if (this.sshManager.isConnected() && !this.remoteProjectDir) {
+            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+            if (workspaceFolder) {
+                const remoteBaseDir = config.get<string>('remoteBaseDir') || '~/Projekte';
+                const projectName = path.basename(workspaceFolder.uri.fsPath);
+                this.remoteProjectDir = `${remoteBaseDir}/${projectName}`;
+            }
+        }
+
         this.postMessage({
             type: 'initialState',
             data: {
@@ -167,6 +177,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             await vsConfig.update('username', data.username, vscode.ConfigurationTarget.Global);
             if (data.privateKeyPath) {
                 await vsConfig.update('privateKeyPath', data.privateKeyPath, vscode.ConfigurationTarget.Global);
+            }
+
+            // Restore remoteProjectDir to allow background polling immediately
+            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+            if (workspaceFolder) {
+                const remoteBaseDir = vsConfig.get<string>('remoteBaseDir') || '~/Projekte';
+                const projectName = path.basename(workspaceFolder.uri.fsPath);
+                this.remoteProjectDir = `${remoteBaseDir}/${projectName}`;
             }
 
             this.postMessage({ type: 'log', message: '✅ Connected!' });

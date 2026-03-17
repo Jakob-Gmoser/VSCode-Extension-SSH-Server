@@ -66,7 +66,7 @@ export class RemoteRunner {
                 mkdir -p "${outputDir}"
                 if [ -f "${pidFile}" ]; then
                     PID=$(cat "${pidFile}")
-                    if ps -p $PID > /dev/null; then
+                    if kill -0 $PID 2>/dev/null; then
                         echo "RUNNING:$PID"
                     else
                         echo "STALE"
@@ -89,7 +89,7 @@ export class RemoteRunner {
                 // 2. Start process in background
                 const startCmd = `
                     cd "${remoteProjectDir}"
-                    nohup ${command} > "${logFile}" 2>&1 &
+                    nohup ${command} </dev/null > "${logFile}" 2>&1 &
                     PID=$!
                     echo $PID > "${pidFile}"
                     echo $PID
@@ -107,7 +107,8 @@ export class RemoteRunner {
 
             // 3. Stream the log file
             // tail --pid exits when the process dies
-            const tailCmd = `tail -f "${logFile}" --pid=${pid}`;
+            // Use eval to properly expand ~ while correctly escaping spaces
+            const tailCmd = `eval "tail -f \\"${logFile}\\" --pid=${pid}"`;
             
             this.currentChannel = await this.sshManager.execStream(
                 tailCmd,
@@ -174,7 +175,7 @@ export class RemoteRunner {
             const checkCmd = `
                 if [ -f "${pidFile}" ]; then
                     PID=$(cat "${pidFile}")
-                    if ps -p $PID > /dev/null; then
+                    if kill -0 $PID 2>/dev/null; then
                         echo "YES"
                     else
                         echo "NO"
