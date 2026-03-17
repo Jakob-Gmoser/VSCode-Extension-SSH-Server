@@ -1,0 +1,130 @@
+{
+  "name": "ssh-server-deploy",
+  "displayName": "SSH Server Deploy",
+  "description": "Deploy, run, and manage projects on a remote server via SSH",
+  "version": "0.2.4",
+  "publisher": "Jakob",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ssh-server-view",
+          "title": "SSH Server",
+          "icon": "$(remote)"
+        }
+      ]
+    },
+    "views": {
+      "ssh-server-view": [
+        {
+          "type": "webview",
+          "id": "sshServer.sidebar",
+          "name": "SSH Server"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "sshServer.connect",
+        "title": "SSH Server: Connect"
+      },
+      {
+        "command": "sshServer.disconnect",
+        "title": "SSH Server: Disconnect"
+      },
+      {
+        "command": "sshServer.deploy",
+        "title": "SSH Server: Deploy Code"
+      },
+      {
+        "command": "sshServer.run",
+        "title": "SSH Server: Run Project"
+      },
+      {
+        "command": "sshServer.stop",
+        "title": "SSH Server: Stop Process"
+      },
+      {
+        "command": "sshServer.pullOutput",
+        "title": "SSH Server: Pull Output Files"
+      },
+      {
+        "command": "sshServer.refreshStatus",
+        "title": "SSH Server: Refresh Server Status"
+      }
+    ],
+    "configuration": {
+      "title": "SSH Server Deploy",
+      "properties": {
+        "sshServer.host": {
+          "type": "string",
+          "default": "",
+          "description": "IP address or hostname of the remote server"
+        },
+        "sshServer.port": {
+          "type": "number",
+          "default": 22,
+          "description": "SSH port of the remote server"
+        },
+        "sshServer.username": {
+          "type": "string",
+          "default": "",
+          "description": "SSH username"
+        },
+        "sshServer.privateKeyPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to SSH private key file (leave empty to use password)"
+        },
+        "sshServer.remoteBaseDir": {
+          "type": "string",
+          "default": "~/Projekte",
+          "description": "Base directory on the remote server for projects"
+        },
+        "sshServer.runCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Custom run command (leave empty for auto-detection)"
+        },
+        "sshServer.excludePatterns": {
+          "type": "array",
+          "default": [
+            "node_modules",
+            ".git",
+            "__pycache__",
+            ".venv",
+            "venv",
+            ".env",
+            "out",
+            "dist",
+            ".DS_Store"
+          ],
+          "description": "Patterns to exclude when deploying files"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/ssh2": "^1.15.5",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "ssh2": "^1.15.0"
+  }
+}
