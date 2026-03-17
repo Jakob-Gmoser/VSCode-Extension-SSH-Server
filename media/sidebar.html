@@ -592,7 +592,8 @@
                         stopBtn.disabled = false;
                         stopBtn.style.display = 'flex';
                     } else {
-                        runBtn.disabled = !document.getElementById('deployBtn').disabled; // Only enable if connected
+                        // If we are NOT running, the run button should only be disabled if we are NOT connected.
+                        runBtn.disabled = !isConnected; 
                         runBtn.style.display = 'flex';
                         stopBtn.disabled = true;
                         stopBtn.style.display = 'none';
