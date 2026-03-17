@@ -28,8 +28,8 @@ A powerful Visual Studio Code extension that allows you to deploy your local wor
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/your-username/vscode-ssh-server-deploy.git
-   cd vscode-ssh-server-deploy
+   git clone https://github.com/Jakob-Gmoser/VSCode-Extension-SSH-Server.git
+   cd VSCode-Extension-SSH-Server
    ```
 
 2. Install dependencies:
