@@ -17,7 +17,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     private outputManager: OutputManager;
     private serverStatus: ServerStatus;
     private remoteProjectDir: string = '';
-    private logs: string[] = ['Bereit.'];
+    private logs: string[] = ['Ready.'];
 
     constructor(
         private readonly extensionUri: vscode.Uri,
@@ -306,7 +306,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     private postMessage(message: any): void {
         if (message.type === 'log') {
-            const time = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
             this.logs.push(`[${time}] ${message.message}`);
             if (this.logs.length > 50) {
                 this.logs.shift();
