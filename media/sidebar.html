@@ -553,8 +553,7 @@
                     if ((!previousState.logsHtml || previousState.logsHtml.includes('Ready.')) && msg.data.logs && msg.data.logs.length > 0) {
                         logArea.innerHTML = ''; 
                         msg.data.logs.forEach(log => {
-                            const entry = `<div class="log-entry"><span class="log-msg">${log}</span></div>`;
-                            appendLog(entry);
+                            appendLog(log);
                         });
                     }
 
