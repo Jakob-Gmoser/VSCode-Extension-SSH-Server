@@ -2,7 +2,7 @@
   "name": "ssh-server-deploy",
   "displayName": "SSH Server Deploy",
   "description": "Deploy, run, and manage projects on a remote server via SSH",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "publisher": "Jakob",
   "repository": {
     "type": "git",

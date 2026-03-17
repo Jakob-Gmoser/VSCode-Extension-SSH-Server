@@ -60,6 +60,10 @@ A powerful Visual Studio Code extension that allows you to deploy your local wor
 4. Click **📦 Deploy Code** to push your workspace to the remote server.
 5. Click **▶ Run** to execute your code natively on the server and watch the live output!
 
+## Demo / Test Script
+
+A `test_server.py` file is included in the project. If you deploy the extension and execute `python3 test_server.py` as your Custom Run Command, it will simulate terminal output, create sample files in the `sshserver_output/` folder, and test the realtime monitoring features.
+
 
 ## License 📜
 
