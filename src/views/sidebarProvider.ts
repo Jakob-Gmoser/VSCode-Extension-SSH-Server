@@ -97,6 +97,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 case 'getInitialState':
                     this.sendInitialState();
                     break;
+                case 'openTerminal':
+                    if (this.remoteProjectDir) {
+                        this.runner.openTerminal(this.remoteProjectDir);
+                    }
+                    break;
             }
         });
 
@@ -240,6 +245,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         } catch (err: any) {
             vscode.window.showErrorMessage(`Run failed: ${err.message}`);
             this.postMessage({ type: 'log', message: `Run failed: ${err.message}` });
+        } finally {
+            // Give the process a second to create files, then refresh
+            setTimeout(() => this.handleRefreshFiles(), 1500);
         }
     }
 

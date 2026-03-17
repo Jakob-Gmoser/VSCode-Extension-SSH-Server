@@ -479,6 +479,9 @@
         <div class="section-header" onclick="toggleSection('logSection')">
             <span class="icon">📋</span>
             <span>Log</span>
+            <button class="btn-secondary" id="openTerminalBtn" onclick="handleOpenTerminal(event)" style="margin-left: 10px; padding: 2px 6px; font-size: 10px; width: auto;" disabled title="Open in Terminal">
+                Terminal ↗
+            </button>
             <span class="collapse-icon">▼</span>
         </div>
         <div class="section-content">
@@ -504,6 +507,7 @@
         const runBtn = document.getElementById('runBtn');
         const stopBtn = document.getElementById('stopBtn');
         const pullAllBtn = document.getElementById('pullAllBtn');
+        const openTerminalBtn = document.getElementById('openTerminalBtn');
         const connBadge = document.getElementById('connBadge');
         const statusContent = document.getElementById('statusContent');
         const fileList = document.getElementById('fileList');
@@ -598,6 +602,11 @@
                         stopBtn.disabled = true;
                         stopBtn.style.display = 'none';
                     }
+                    if (msg.running) {
+                        openTerminalBtn.disabled = false;
+                    } else {
+                        openTerminalBtn.disabled = true;
+                    }
                     break;
                 case 'outputFiles':
                     updateFileList(msg.files);
@@ -616,6 +625,12 @@
             deployBtn.disabled = !connected;
             runBtn.disabled = !connected;
             pullAllBtn.disabled = !connected;
+
+            // Terminal button depends on if we are running. It handles itself in runStatus,
+            // but if we disconnect, we surely disable it.
+            if (!connected) {
+                openTerminalBtn.disabled = true;
+            }
 
             if (connected) {
                 connBadge.className = 'status-badge connected';
@@ -754,6 +769,11 @@
 
         function downloadFile(filePath) {
             vscode.postMessage({ type: 'downloadFile', data: { path: filePath } });
+        }
+
+        function handleOpenTerminal(event) {
+            event.stopPropagation(); // prevent toggling the section
+            vscode.postMessage({ type: 'openTerminal' });
         }
     </script>
 </body>

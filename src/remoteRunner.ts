@@ -257,6 +257,101 @@ export class RemoteRunner {
         return cmd || null;
     }
 
+    public async openTerminal(remoteProjectDir: string): Promise<void> {
+        if (!this.sshManager.isConnected()) {
+            vscode.window.showErrorMessage('Not connected to SSH server');
+            return;
+        }
+
+        const outputDir = `${remoteProjectDir}/sshserver_output`;
+        const logFile = `${outputDir}/live_run.log`;
+        const pidFile = `${outputDir}/live_run.pid`;
+
+        try {
+            // Check if process is running
+            const checkCmd = `
+                if [ -f "${pidFile}" ]; then
+                    PID=$(cat "${pidFile}")
+                    if kill -0 $PID 2>/dev/null; then
+                        echo "RUNNING:$PID"
+                    else
+                        echo "NONE"
+                    fi
+                else
+                    echo "NONE"
+                fi
+            `;
+            const checkResult = await this.sshManager.exec(checkCmd);
+            const status = checkResult.stdout.trim();
+
+            if (!status.startsWith('RUNNING:')) {
+                vscode.window.showErrorMessage('No background process is currently running.');
+                return;
+            }
+
+            const pid = status.split(':')[1];
+
+            // If we already have a stream channel open in the background, close it first
+            if (this.currentChannel) {
+                try {
+                    this.currentChannel.close();
+                } catch (e) {}
+                this.currentChannel = null;
+            }
+
+            if (this.terminal) {
+                this.terminal.dispose();
+            }
+
+            // Create a new PseudoTerminal
+            this.writeEmitter = new vscode.EventEmitter<string>();
+            const closeEmitter = new vscode.EventEmitter<number | void>();
+
+            const pty: vscode.Pseudoterminal = {
+                onDidWrite: this.writeEmitter.event,
+                onDidClose: closeEmitter.event,
+                open: () => {},
+                close: () => {
+                    if (this.currentChannel) {
+                        try {
+                            this.currentChannel.close();
+                        } catch (e) {}
+                        this.currentChannel = null;
+                    }
+                },
+                handleInput: () => {}
+            };
+
+            this.terminal = vscode.window.createTerminal({
+                name: '🖥️ SSH Server (Live Log)',
+                pty,
+            });
+            this.terminal.show();
+
+            this.writeEmitter.fire(`\x1b[1;36m⚡ Re-attached to live log stream of PID ${pid}...\x1b[0m\r\n`);
+            this.writeEmitter.fire('\x1b[90m' + '─'.repeat(60) + '\x1b[0m\r\n');
+
+            const tailCmd = `eval "tail -f \\"${logFile}\\" --pid=${pid}"`;
+            this.currentChannel = await this.sshManager.execStream(
+                tailCmd,
+                (data: string) => {
+                    this.writeEmitter.fire(data.replace(/\n/g, '\r\n'));
+                },
+                (data: string) => {
+                    this.writeEmitter.fire(`\x1b[31m${data.replace(/\n/g, '\r\n')}\x1b[0m`);
+                },
+                (code: number) => {
+                    this.writeEmitter.fire('\r\n\x1b[90m' + '─'.repeat(60) + '\x1b[0m\r\n');
+                    this.writeEmitter.fire(`\x1b[1;36mℹ️ Stream disconnected or process ended.\x1b[0m\r\n`);
+                    this.currentChannel = null;
+                }
+            );
+
+        } catch (err: any) {
+            vscode.window.showErrorMessage(`Failed to open terminal: ${err.message}`);
+        }
+    }
+
     public dispose(): void {
         this.stop();
         this.writeEmitter.dispose();
