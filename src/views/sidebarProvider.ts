@@ -134,7 +134,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         if (this.sshManager.isConnected() && !this.remoteProjectDir) {
             const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
             if (workspaceFolder) {
-                const remoteBaseDir = config.get<string>('remoteBaseDir') || '~/Projekte';
+                let remoteBaseDir = config.get<string>('remoteBaseDir') || '~/Projekte';
+                if (remoteBaseDir.startsWith('~/')) {
+                    // Try to restore cleanly, but if it fails since we're not fully async here we can do a best effort.
+                    // Doing a synchish string replace for now. The proper connect logic will do the real check.
+                    remoteBaseDir = remoteBaseDir.replace(/^~/, '~/'); 
+                }
                 const projectName = path.basename(workspaceFolder.uri.fsPath);
                 this.remoteProjectDir = `${remoteBaseDir}/${projectName}`;
             }
@@ -157,6 +162,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             const lastStatus = this.serverStatus.getLastStatus();
             if (lastStatus) {
                 this.postMessage({ type: 'serverStatus', data: lastStatus });
+            }
+            
+            // Auto refresh output files on load if connected
+            if (this.remoteProjectDir || true) {
+                setTimeout(() => this.handleRefreshFiles(), 500);
             }
         }
     }
