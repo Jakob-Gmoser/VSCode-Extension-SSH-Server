@@ -25,7 +25,12 @@ export class Deployer {
         const localDir = workspaceFolder.uri.fsPath;
         const projectName = path.basename(localDir);
         const config = vscode.workspace.getConfiguration('sshServer');
-        const remoteBaseDir = config.get<string>('remoteBaseDir') || '~/Projekte';
+        let remoteBaseDir = config.get<string>('remoteBaseDir') || '~/Projekte';
+        if (remoteBaseDir.startsWith('~/')) {
+            const homeResult = await this.sshManager.exec('echo $HOME');
+            const homeDir = homeResult.stdout.trim();
+            remoteBaseDir = remoteBaseDir.replace(/^~/, homeDir);
+        }
         const excludePatterns = config.get<string[]>('excludePatterns') || [];
         const sshConfig = this.sshManager.getConfig()!;
 

@@ -182,7 +182,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             // Restore remoteProjectDir to allow background polling immediately
             const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
             if (workspaceFolder) {
-                const remoteBaseDir = vsConfig.get<string>('remoteBaseDir') || '~/Projekte';
+                let remoteBaseDir = vsConfig.get<string>('remoteBaseDir') || '~/Projekte';
+                if (remoteBaseDir.startsWith('~/')) {
+                    const homeResult = await this.sshManager.exec('echo $HOME');
+                    const homeDir = homeResult.stdout.trim();
+                    remoteBaseDir = remoteBaseDir.replace(/^~/, homeDir);
+                }
                 const projectName = path.basename(workspaceFolder.uri.fsPath);
                 this.remoteProjectDir = `${remoteBaseDir}/${projectName}`;
             }
